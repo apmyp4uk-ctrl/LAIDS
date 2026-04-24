@@ -1,0 +1,89 @@
+# AI Factory Configuration
+# Complete software development system
+
+# Hardware Settings
+hardware:
+  cpu_cores: 14
+  cpu_threads: 20
+  ram_gb: 16
+  gpu_model: "RTX 3070"
+  gpu_vram_gb: 8
+  storage_gb: 951
+
+# Local LLM Settings
+ollama:
+  host: "http://localhost:11434"
+  model: "mistral"
+  fallback_model: "codeqwen"
+  timeout: 120
+  max_tokens: 4096
+  temperature: 0.7
+
+# Cloud API Providers
+cloud_apis:
+  openai:
+    enabled: true
+    model: "gpt-4o-mini"
+    max_tokens: 16000
+    timeout: 60
+  
+  anthropic:
+    enabled: true
+    model: "claude-3-haiku-20240307"
+    max_tokens: 200000
+    timeout: 60
+  
+  google:
+    enabled: true
+    model: "gemini-2.0-flash"
+    max_tokens: 64000
+    timeout: 60
+  
+  groq:
+    enabled: true
+    model: "llama-3.1-70b-versatile"
+    max_tokens: 8192
+    timeout: 30
+
+# Agent Settings
+agents:
+  max_concurrent: 3
+  idle_timeout: 300
+  restart_delay: 15
+  memory_limit_mb: 4096
+  cpu_limit_percent: 80
+
+# Task Queue
+queue:
+  max_size: 100
+  poll_interval: 2
+  retry_attempts: 3
+  retry_backoff: 5
+
+# Logging
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: "logs/ai-factory.log"
+  rotation: "daily"
+  retention_days: 30
+
+# Token Tracking
+tokens:
+  daily_limit: 100000
+  warning_threshold: 0.8
+  track_incoming: true
+  track_outgoing: true
+
+# Timeouts
+timeouts:
+  agent_execution: 600
+  api_call: 60
+  checkpoint_save: 30
+
+# Health Check
+health:
+  enabled: true
+  port: 8080
+  endpoint: "/health"
+  interval: 60
