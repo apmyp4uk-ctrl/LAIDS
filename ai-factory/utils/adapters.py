@@ -142,7 +142,7 @@ class GroqAdapter(BaseAdapter):
         if not self.enabled or not self.client:
             return ""
         
-        model = self.config.get('cloud_apis', {}).get('groq', {}).get('model', 'llama-3.1-70b-versatile')
+        model = self.config.get('cloud_apis', {}).get('groq', {}).get('model', 'llama-3.3-70b-versatile')
         max_tokens = self.config.get('cloud_apis', {}).get('groq', {}).get('max_tokens', 8192)
         
         response = await self.client.chat.completions.create(
