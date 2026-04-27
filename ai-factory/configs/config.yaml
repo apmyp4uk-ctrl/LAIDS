@@ -41,7 +41,7 @@ cloud_apis:
   
   groq:
     enabled: true
-    model: "llama-3.1-70b-versatile"
+    model: "llama-3.3-70b-versatile"
     max_tokens: 8192
     timeout: 30
 
