@@ -1,12 +1,17 @@
-"""AI Factory - Main agent orchestration system."""
+"""AI Factory - Main agent orchestration system with tools."""
 import asyncio
 import os
 import sys
 import signal
+import subprocess
+import shlex
+import re
 from pathlib import Path
-from typing import Optional, Any
+from typing import Optional, Any, List, Dict
 from datetime import datetime
 import logging
+import aiofiles
+import json
 
 # Add project to path
 sys.path.insert(0, str(Path(__file__).parent))
@@ -17,14 +22,233 @@ from utils.adapters import AdapterManager
 from utils.queue import TaskQueue, Task, TaskStatus
 
 
+# ============================================================
+# AGENT TOOLS
+# ============================================================
+
+class AgentTools:
+    """Tools available to all agents."""
+    
+    def __init__(self, workspace: str = "."):
+        self.workspace = Path(workspace)
+        self.logger = logging.getLogger('ai-factory.tools')
+    
+    # 📁 FILE OPERATIONS
+    async def read_file(self, path: str) -> str:
+        """Read file content."""
+        try:
+            async with aiofiles.open(path, 'r') as f:
+                return await f.read()
+        except Exception as e:
+            return f"Error: {e}"
+    
+    async def write_file(self, path: str, content: str) -> Dict:
+        """Write content to file."""
+        try:
+            async with aiofiles.open(path, 'w') as f:
+                await f.write(content)
+            return {'status': 'success', 'path': path}
+        except Exception as e:
+            return {'status': 'error', 'error': str(e)}
+    
+    async def edit_file(self, path: str, old: str, new: str) -> Dict:
+        """Edit file content (replace old with new)."""
+        try:
+            async with aiofiles.open(path, 'r') as f:
+                content = await f.read()
+            content = content.replace(old, new)
+            async with aiofiles.open(path, 'w') as f:
+                await f.write(content)
+            return {'status': 'success', 'path': path}
+        except Exception as e:
+            return {'status': 'error', 'error': str(e)}
+    
+    async def list_files(self, pattern: str = "*") -> List[str]:
+        """List files matching pattern."""
+        try:
+            files = list(self.workspace.glob(pattern))
+            return [str(f) for f in files]
+        except Exception as e:
+            return [f"Error: {e}"]
+    
+    # 💻 TERMINAL
+    async def run_command(self, cmd: str, timeout: int = 30) -> Dict:
+        """Run shell command."""
+        try:
+            result = subprocess.run(
+                cmd, 
+                shell=True, 
+                capture_output=True, 
+                text=True,
+                timeout=timeout,
+                cwd=str(self.workspace)
+            )
+            return {
+                'status': 'success' if result.returncode == 0 else 'error',
+                'stdout': result.stdout,
+                'stderr': result.stderr,
+                'returncode': result.returncode
+            }
+        except subprocess.TimeoutExpired:
+            return {'status': 'error', 'error': 'Timeout'}
+        except Exception as e:
+            return {'status': 'error', 'error': str(e)}
+    
+    async def run_background(self, cmd: str) -> Dict:
+        """Run command in background."""
+        try:
+            proc = subprocess.Popen(
+                cmd,
+                shell=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                cwd=str(self.workspace)
+            )
+            return {
+                'status': 'success',
+                'pid': proc.pid,
+                'message': f'Started process {proc.pid}'
+            }
+        except Exception as e:
+            return {'status': 'error', 'error': str(e)}
+    
+    # 🔍 SEARCH
+    async def grep(self, pattern: str, files: str = "*.py") -> List[Dict]:
+        """Search pattern in files."""
+        results = []
+        try:
+            for path in self.workspace.glob(files):
+                try:
+                    async with aiofiles.open(path, 'r') as f:
+                        content = await f.read()
+                    for i, line in enumerate(content.split('\n'), 1):
+                        if re.search(pattern, line):
+                            results.append({
+                                'file': str(path),
+                                'line': i,
+                                'content': line.strip()
+                            })
+                except:
+                    pass
+        except Exception as e:
+            return [{'error': str(e)}]
+        return results
+    
+    async def find_files(self, name: str) -> List[str]:
+        """Find files by name pattern."""
+        try:
+            files = list(self.workspace.rglob(f"*{name}*"))
+            return [str(f) for f in files if f.is_file()]
+        except Exception as e:
+            return [f"Error: {e}"]
+    
+    # 🏃 CODE EXECUTION
+    async def run_python(self, code: str = None, file: str = None) -> Dict:
+        """Run Python code/file."""
+        try:
+            if file:
+                result = subprocess.run(
+                    ['python', str(file)],
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                    cwd=str(self.workspace)
+                )
+            else:
+                result = subprocess.run(
+                    ['python', '-c', code],
+                    capture_output=True,
+                    text=True,
+                    timeout=30
+                )
+            return {
+                'status': 'success' if result.returncode == 0 else 'error',
+                'stdout': result.stdout,
+                'stderr': result.stderr,
+                'returncode': result.returncode
+            }
+        except subprocess.TimeoutExpired:
+            return {'status': 'error', 'error': 'Timeout'}
+        except Exception as e:
+            return {'status': 'error', 'error': str(e)}
+    
+    async def run_node(self, file: str = None) -> Dict:
+        """Run Node.js file."""
+        try:
+            result = subprocess.run(
+                ['node', str(file)],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                cwd=str(self.workspace)
+            )
+            return {
+                'status': 'success' if result.returncode == 0 else 'error',
+                'stdout': result.stdout,
+                'stderr': result.stderr
+            }
+        except Exception as e:
+            return {'status': 'error', 'error': str(e)}
+    
+    # 🔧 LINTERS
+    async def lint_python(self, file: str) -> Dict:
+        """Lint Python file with flake8."""
+        try:
+            result = subprocess.run(
+                ['flake8', file, '--format=%(row)d:%(col)d: %(code)s %(text)s'],
+                capture_output=True,
+                text=True,
+                cwd=str(self.workspace)
+            )
+            return {
+                'status': 'success',
+                'issues': result.stdout.strip().split('\n') if result.stdout else []
+            }
+        except FileNotFoundError:
+            # Try pylint
+            try:
+                result = subprocess.run(
+                    ['pylint', file, '--output-format=text'],
+                    capture_output=True,
+                    text=True,
+                    cwd=str(self.workspace)
+                )
+                return {
+                    'status': 'success', 
+                    'issues': result.stdout.strip().split('\n')[:10]
+                }
+            except:
+                return {'status': 'warning', 'message': 'No linter available'}
+        except Exception as e:
+            return {'status': 'error', 'error': str(e)}
+    
+    async def lint_js(self, file: str) -> Dict:
+        """Lint JS file with eslint."""
+        try:
+            result = subprocess.run(
+                ['npx', 'eslint', file],
+                capture_output=True,
+                text=True,
+                cwd=str(self.workspace)
+            )
+            return {
+                'status': 'success',
+                'issues': result.stdout.strip().split('\n') if result.stdout else []
+            }
+        except Exception as e:
+            return {'status': 'warning', 'message': f'No eslint: {e}'}
+
+
 class Agent:
     """Base agent for AI Factory."""
     
-    def __init__(self, name: str, role: str, config: dict, logger: AIFactoryLogger):
+    def __init__(self, name: str, role: str, config: dict, logger: AIFactoryLogger, tools: AgentTools = None):
         self.name = name
         self.role = role
         self.config = config
         self.logger = logger
+        self.tools = tools or AgentTools()
         self.is_running = False
         self.current_task: Optional[Task] = None
     
